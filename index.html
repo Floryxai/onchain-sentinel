@@ -1,330 +1,285 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>On-Chain Sentinel - Trending Memecoins</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body {
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #0a0e1a;
-        }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
+import React, { useState } from 'react';
+import { TrendingUp, AlertCircle, CheckCircle, XCircle, Loader2, ExternalLink } from 'lucide-react';
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+export default function SolanaMemeAnalyzer() {
+  const [contractAddress, setContractAddress] = useState('');
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-        function TrendingTracker() {
-            const [tokens, setTokens] = useState([]);
-            const [loading, setLoading] = useState(false);
-            const [error, setError] = useState(null);
-            const [lastUpdate, setLastUpdate] = useState(null);
-            const [autoRefresh, setAutoRefresh] = useState(true);
+  const analyzeToken = async () => {
+    if (!contractAddress.trim()) {
+      setError('Please enter a contract address');
+      return;
+    }
 
-            const calculateRisk = (token) => {
-                let riskScore = 0;
-                let factors = [];
+    setLoading(true);
+    setError('');
+    setAnalysis(null);
 
-                // Low liquidity = high risk
-                if (token.liquidity < 10000) {
-                    riskScore += 40;
-                    factors.push('Very low liquidity');
-                } else if (token.liquidity < 50000) {
-                    riskScore += 25;
-                    factors.push('Low liquidity');
-                }
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [
+            {
+              role: "user",
+              content: `You are an expert Solana memecoin analyst. Analyze this contract address: ${contractAddress}
 
-                // High volatility = high risk
-                if (Math.abs(token.priceChange1h) > 30) {
-                    riskScore += 20;
-                    factors.push('Extreme volatility');
-                } else if (Math.abs(token.priceChange1h) > 15) {
-                    riskScore += 10;
-                    factors.push('High volatility');
-                }
+Search for information about this token and provide a comprehensive investment thesis. Focus on:
 
-                // Volume/liquidity ratio
-                const volLiqRatio = token.volume24h / token.liquidity;
-                if (volLiqRatio > 5) {
-                    riskScore += 15;
-                    factors.push('Volume spike vs liquidity');
-                }
+1. **Token Legitimacy**: Is this a real token? Any red flags?
+2. **Social Presence**: Twitter/X activity, community size, engagement
+3. **Market Metrics**: Market cap, liquidity, holder distribution
+4. **Risk Assessment**: Rug pull indicators, contract risks, team transparency
+5. **Hype Factor**: Meme potential, viral momentum, cultural relevance
+6. **Trading Activity**: Volume trends, recent price action
 
-                // Recent dump
-                if (token.priceChange1h < -20) {
-                    riskScore += 20;
-                    factors.push('Recent dump');
-                }
+Based on your analysis, give a clear BUY or PASS recommendation with reasoning.
 
-                let risk = 'LOW';
-                let color = 'text-green-400';
-                if (riskScore > 60) {
-                    risk = 'EXTREME';
-                    color = 'text-red-500';
-                } else if (riskScore > 40) {
-                    risk = 'HIGH';
-                    color = 'text-orange-500';
-                } else if (riskScore > 20) {
-                    risk = 'MEDIUM';
-                    color = 'text-yellow-500';
-                }
+CRITICAL: Return ONLY valid JSON, nothing else. No explanatory text before or after. No markdown code blocks. Just pure JSON.
 
-                return { risk, color, factors, score: riskScore };
-            };
+Use this EXACT structure:
+{
+  "decision": "BUY",
+  "confidence": "HIGH",
+  "summary": "One sentence thesis here",
+  "strengths": ["strength 1", "strength 2", "strength 3"],
+  "risks": ["risk 1", "risk 2", "risk 3"],
+  "metrics": {
+    "legitimacy_score": 7,
+    "hype_score": 8,
+    "risk_score": 6
+  },
+  "reasoning": "Your 2-3 sentence explanation here"
+}`
+            }
+          ],
+          tools: [
+            {
+              "type": "web_search_20250305",
+              "name": "web_search"
+            }
+          ]
+        })
+      });
 
-            const fetchTrending = async () => {
-                try {
-                    setLoading(true);
-                    setError(null);
-                    
-                    // Fetch trending Solana tokens
-                    const response = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.dexscreener.com/latest/dex/search?q=solana'));
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    if (data.pairs) {
-                        // Filter for Solana pairs with significant volume, exclude wrapped SOL
-                        const trending = data.pairs
-                            .filter(p => 
-                                p.chainId === 'solana' && 
-                                p.volume?.h24 > 10000 &&
-                                p.liquidity?.usd > 5000 &&
-                                p.baseToken.symbol !== 'SOL' &&
-                                p.baseToken.symbol !== 'WSOL' &&
-                                p.baseToken.address !== 'So11111111111111111111111111111111111111112'
-                            )
-                            .map(p => ({
-                                address: p.baseToken.address,
-                                symbol: p.baseToken.symbol,
-                                name: p.baseToken.name,
-                                price: parseFloat(p.priceUsd || 0),
-                                priceChange5m: parseFloat(p.priceChange?.m5 || 0),
-                                priceChange1h: parseFloat(p.priceChange?.h1 || 0),
-                                priceChange6h: parseFloat(p.priceChange?.h6 || 0),
-                                priceChange24h: parseFloat(p.priceChange?.h24 || 0),
-                                volume24h: parseFloat(p.volume?.h24 || 0),
-                                liquidity: parseFloat(p.liquidity?.usd || 0),
-                                marketCap: parseFloat(p.fdv || 0),
-                                txns24h: (p.txns?.h24?.buys || 0) + (p.txns?.h24?.sells || 0),
-                                buys24h: p.txns?.h24?.buys || 0,
-                                sells24h: p.txns?.h24?.sells || 0,
-                            }))
-                            // Sort by 24h volume (trending)
-                            .sort((a, b) => b.volume24h - a.volume24h)
-                            .slice(0, 30);
-                        
-                        setTokens(trending);
-                        setLastUpdate(new Date());
-                    }
-                    
-                    setLoading(false);
-                } catch (err) {
-                    setError('Failed to fetch trending tokens. Using demo data...');
-                    setLoading(false);
-                    
-                    // Demo data for testing
-                    const demoTokens = [
-                        { symbol: 'BRAINROT', name: 'brainrot', price: 0.00012, priceChange24h: 274.5, priceChange1h: 20.08, volume24h: 86000, liquidity: 40400, marketCap: 163000, txns24h: 896, buys24h: 461, sells24h: 435, address: 'demo1' },
-                        { symbol: 'BAGLESS', name: 'Bagless', price: 0.0034, priceChange24h: 189.6, priceChange1h: -18.97, volume24h: 61400, liquidity: 176000, marketCap: 171000, txns24h: 758, buys24h: 416, sells24h: 342, address: 'demo2' },
-                        { symbol: 'CREATOR', name: 'Creator Coin', price: 0.0089, priceChange24h: 100.9, priceChange1h: -19.35, volume24h: 39000, liquidity: 179000, marketCap: 177000, txns24h: 561, buys24h: 353, sells24h: 208, address: 'demo3' },
-                    ];
-                    setTokens(demoTokens);
-                    setLastUpdate(new Date());
-                }
-            };
+      const data = await response.json();
+      
+      let analysisText = data.content
+        .map(item => item.type === "text" ? item.text : "")
+        .join("\n")
+        .trim();
 
-            useEffect(() => {
-                fetchTrending();
-                if (autoRefresh) {
-                    const interval = setInterval(fetchTrending, 60000); // Every 60 seconds
-                    return () => clearInterval(interval);
-                }
-            }, [autoRefresh]);
+      // Remove markdown code blocks and extra whitespace
+      analysisText = analysisText
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .replace(/^[^{]*({[\s\S]*})[^}]*$/, '$1')
+        .trim();
+      
+      console.log('Cleaned response:', analysisText);
+      
+      const parsed = JSON.parse(analysisText);
+      setAnalysis(parsed);
+    } catch (err) {
+      setError(`Analysis failed: ${err.message}`);
+      console.error('Analysis error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-            const formatNumber = (num) => {
-                if (num >= 1000000) return `$${(num / 1000000).toFixed(2)}M`;
-                if (num >= 1000) return `$${(num / 1000).toFixed(1)}K`;
-                return `$${num.toFixed(4)}`;
-            };
+  const getDecisionColor = (decision) => {
+    return decision === 'BUY' ? 'text-green-400' : 'text-red-400';
+  };
 
-            const formatPercent = (val) => {
-                return `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
-            };
+  const getConfidenceBadge = (confidence) => {
+    const colors = {
+      HIGH: 'bg-green-500/20 text-green-400',
+      MEDIUM: 'bg-yellow-500/20 text-yellow-400',
+      LOW: 'bg-red-500/20 text-red-400'
+    };
+    return colors[confidence] || colors.MEDIUM;
+  };
 
-            return (
-                <div className="min-h-screen bg-[#0a0e1a] text-white p-4">
-                    <div className="max-w-7xl mx-auto">
-                        {/* Header */}
-                        <div className="mb-6">
-                            <div className="flex items-center justify-between mb-2">
-                                <div>
-                                    <h1 className="text-2xl font-bold text-white mb-1">🔥 TRENDING NOW</h1>
-                                    <p className="text-gray-500 text-sm">Top Solana memecoins by 24h volume</p>
-                                </div>
-                                <div className="flex gap-3 items-center">
-                                    <button
-                                        onClick={() => setAutoRefresh(!autoRefresh)}
-                                        className={`px-4 py-2 rounded text-sm ${autoRefresh ? 'bg-green-600' : 'bg-gray-700'}`}
-                                    >
-                                        {autoRefresh ? '⚡ Live' : '⏸ Paused'}
-                                    </button>
-                                    <button
-                                        onClick={fetchTrending}
-                                        disabled={loading}
-                                        className="px-4 py-2 bg-blue-600 rounded text-sm hover:bg-blue-700"
-                                    >
-                                        {loading ? '...' : '🔄 Refresh'}
-                                    </button>
-                                </div>
-                            </div>
-                            {lastUpdate && (
-                                <p className="text-xs text-gray-600">
-                                    Last updated: {lastUpdate.toLocaleTimeString()}
-                                </p>
-                            )}
-                        </div>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-black to-blue-900 text-white p-4 md:p-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <TrendingUp className="w-10 h-10 text-purple-400" />
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
+              AI Memecoin Analyzer
+            </h1>
+          </div>
+          <p className="text-gray-400 text-lg">Solana Edition - Powered by Claude</p>
+        </div>
 
-                        {error && (
-                            <div className="mb-4 p-3 bg-yellow-900/20 border border-yellow-700 rounded text-yellow-400 text-sm">
-                                ⚠️ {error}
-                            </div>
-                        )}
+        {/* Input Section */}
+        <div className="bg-gray-900/50 backdrop-blur border border-purple-500/30 rounded-2xl p-6 mb-6">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Solana Contract Address
+          </label>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={contractAddress}
+              onChange={(e) => setContractAddress(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && analyzeToken()}
+              placeholder="e.g., 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+            />
+            <button
+              onClick={analyzeToken}
+              disabled={loading}
+              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold px-8 py-3 rounded-lg transition-all duration-200 flex items-center gap-2 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                'Analyze'
+              )}
+            </button>
+          </div>
+          {error && (
+            <div className="mt-3 flex items-start gap-2 text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
 
-                        {/* Token List */}
-                        <div className="space-y-2">
-                            {tokens.map((token, idx) => {
-                                const riskData = calculateRisk(token);
-                                const buyPressure = token.buys24h / (token.buys24h + token.sells24h) * 100;
-                                
-                                return (
-                                    <div
-                                        key={token.address}
-                                        className="bg-[#141921] border border-gray-800 rounded-lg p-4 hover:border-gray-700 transition-all"
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            {/* Token Info */}
-                                            <div className="flex items-center gap-4 flex-1">
-                                                <div className="text-gray-500 text-sm w-6">#{idx + 1}</div>
-                                                <div className="min-w-[120px]">
-                                                    <div className="font-bold text-white">{token.symbol}</div>
-                                                    <div className="text-xs text-gray-500">{token.name}</div>
-                                                </div>
-                                            </div>
-
-                                            {/* Market Cap */}
-                                            <div className="min-w-[100px]">
-                                                <div className="text-gray-500 text-xs">Market Cap</div>
-                                                <div className="text-white font-medium">{formatNumber(token.marketCap)}</div>
-                                            </div>
-
-                                            {/* Liquidity */}
-                                            <div className="min-w-[100px]">
-                                                <div className="text-gray-500 text-xs">Liquidity</div>
-                                                <div className="text-white">{formatNumber(token.liquidity)}</div>
-                                            </div>
-
-                                            {/* Volume */}
-                                            <div className="min-w-[100px]">
-                                                <div className="text-gray-500 text-xs">Volume 24h</div>
-                                                <div className="text-white">{formatNumber(token.volume24h)}</div>
-                                            </div>
-
-                                            {/* Transactions */}
-                                            <div className="min-w-[100px]">
-                                                <div className="text-gray-500 text-xs">Txns 24h</div>
-                                                <div className="flex gap-2 text-sm">
-                                                    <span className="text-green-400">{token.buys24h}</span>
-                                                    <span className="text-gray-600">/</span>
-                                                    <span className="text-red-400">{token.sells24h}</span>
-                                                </div>
-                                            </div>
-
-                                            {/* Price Changes */}
-                                            <div className="min-w-[140px]">
-                                                <div className="flex gap-2">
-                                                    <div>
-                                                        <div className="text-gray-500 text-xs">1h</div>
-                                                        <div className={`text-sm font-medium ${token.priceChange1h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                            {formatPercent(token.priceChange1h)}
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-gray-500 text-xs">24h</div>
-                                                        <div className={`text-sm font-medium ${token.priceChange24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                            {formatPercent(token.priceChange24h)}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Risk Rating */}
-                                            <div className="min-w-[120px]">
-                                                <div className="text-gray-500 text-xs mb-1">Risk Level</div>
-                                                <div className={`font-bold ${riskData.color}`}>
-                                                    {riskData.risk}
-                                                </div>
-                                                {riskData.factors.length > 0 && (
-                                                    <div className="text-xs text-gray-600 mt-1">
-                                                        {riskData.factors[0]}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Action Button */}
-                                            <button className="px-4 py-2 bg-blue-600 rounded text-sm hover:bg-blue-700 transition-colors">
-                                                View
-                                            </button>
-                                        </div>
-
-                                        {/* Buy Pressure Bar */}
-                                        <div className="mt-3 flex items-center gap-2">
-                                            <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
-                                                <div 
-                                                    className="h-full bg-green-500"
-                                                    style={{ width: `${buyPressure}%` }}
-                                                />
-                                            </div>
-                                            <div className="text-xs text-gray-500 w-16 text-right">
-                                                {buyPressure.toFixed(0)}% buys
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {tokens.length === 0 && !loading && (
-                            <div className="text-center py-12 text-gray-500">
-                                <p className="text-2xl mb-2">👀</p>
-                                <p>No trending tokens found</p>
-                                <p className="text-sm mt-2">Click refresh to scan for trending memecoins</p>
-                            </div>
-                        )}
-
-                        {/* Footer */}
-                        <div className="mt-8 pt-4 border-t border-gray-800 text-center text-xs text-gray-600">
-                            <p>Risk ratings based on liquidity, volatility, and volume analysis</p>
-                            <p className="mt-1">⚠️ Not financial advice. DYOR before trading.</p>
-                        </div>
-                    </div>
+        {/* Analysis Results */}
+        {analysis && (
+          <div className="space-y-4 animate-fade-in">
+            {/* Decision Card */}
+            <div className="bg-gray-900/70 backdrop-blur border border-purple-500/30 rounded-2xl p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  {analysis.decision === 'BUY' ? (
+                    <CheckCircle className="w-8 h-8 text-green-400" />
+                  ) : (
+                    <XCircle className="w-8 h-8 text-red-400" />
+                  )}
+                  <div>
+                    <h2 className={`text-3xl font-bold ${getDecisionColor(analysis.decision)}`}>
+                      {analysis.decision}
+                    </h2>
+                    <p className="text-gray-400 mt-1">{analysis.summary}</p>
+                  </div>
                 </div>
-            );
-        }
+                <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getConfidenceBadge(analysis.confidence)}`}>
+                  {analysis.confidence} CONFIDENCE
+                </span>
+              </div>
+              <p className="text-gray-300 leading-relaxed">{analysis.reasoning}</p>
+            </div>
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<TrendingTracker />);
-    </script>
-</body>
-</html>
+            {/* Metrics */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-gray-900/70 backdrop-blur border border-purple-500/30 rounded-xl p-4">
+                <div className="text-gray-400 text-sm mb-1">Legitimacy</div>
+                <div className="text-2xl font-bold text-purple-400">
+                  {analysis.metrics.legitimacy_score}/10
+                </div>
+              </div>
+              <div className="bg-gray-900/70 backdrop-blur border border-purple-500/30 rounded-xl p-4">
+                <div className="text-gray-400 text-sm mb-1">Hype Factor</div>
+                <div className="text-2xl font-bold text-blue-400">
+                  {analysis.metrics.hype_score}/10
+                </div>
+              </div>
+              <div className="bg-gray-900/70 backdrop-blur border border-purple-500/30 rounded-xl p-4">
+                <div className="text-gray-400 text-sm mb-1">Risk Level</div>
+                <div className="text-2xl font-bold text-red-400">
+                  {analysis.metrics.risk_score}/10
+                </div>
+              </div>
+            </div>
+
+            {/* Strengths & Risks */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-gray-900/70 backdrop-blur border border-green-500/30 rounded-xl p-5">
+                <h3 className="text-lg font-semibold text-green-400 mb-3 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5" />
+                  Strengths
+                </h3>
+                <ul className="space-y-2">
+                  {analysis.strengths.map((strength, idx) => (
+                    <li key={idx} className="text-gray-300 text-sm flex items-start gap-2">
+                      <span className="text-green-400 mt-1">•</span>
+                      <span>{strength}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-gray-900/70 backdrop-blur border border-red-500/30 rounded-xl p-5">
+                <h3 className="text-lg font-semibold text-red-400 mb-3 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  Risks
+                </h3>
+                <ul className="space-y-2">
+                  {analysis.risks.map((risk, idx) => (
+                    <li key={idx} className="text-gray-300 text-sm flex items-start gap-2">
+                      <span className="text-red-400 mt-1">•</span>
+                      <span>{risk}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* Quick Links */}
+            <div className="bg-gray-900/70 backdrop-blur border border-purple-500/30 rounded-xl p-4">
+              <div className="flex flex-wrap gap-3">
+                <a
+                  href={`https://solscan.io/token/${contractAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  View on Solscan
+                </a>
+                <a
+                  href={`https://dexscreener.com/solana/${contractAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  DexScreener
+                </a>
+                <a
+                  href={`https://birdeye.so/token/${contractAddress}?chain=solana`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Birdeye
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Disclaimer */}
+        <div className="mt-8 text-center text-gray-500 text-sm">
+          <p>⚠️ Not financial advice. DYOR. Memecoins are extremely risky.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
