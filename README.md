@@ -12,17 +12,16 @@ Monitors top Solana tokens and generates alerts for:
 - 📊 Volume spikes
 - 🐋 Smart money patterns
 
-## Live Dashboard
+## 🔗 Live Demo
 
-**[View Live Tracker](https://floryxai.github.io/onchain-sentinel)**
+[View Live Tracker](https://floryxai.github.io/onchain-sentinel/)
 
-Updates every 30 seconds with real data from Dexscreener.
-
-## Tech
-
-- Single-file HTML app
-- React + Tailwind CSS
-- Dexscreener API
+## Features
+- Real-time trending Solana memecoins
+- Risk ratings (LOW/MEDIUM/HIGH/EXTREME)
+- 24h volume tracking
+- Buy/sell pressure indicators
+- Auto-refresh every 60 seconds
 
 ---
 
